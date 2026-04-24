@@ -35,11 +35,19 @@ import {
 import { signOut } from "firebase/auth";
 import bg from "../assets/bgdesk.jpg";
 
+import { saveAs } from "file-saver";
+import Papa from "papaparse";
+
 const Admin = () => {
   const [data, setData] = useState([]);
   const [editData, setEditData] = useState({});
-  const [isEdit, setIsEdit] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [isEdit, setIsEdit] = useState(false);
+
+  // 🔥 EXPORT MODAL
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
     fetchData();
@@ -52,16 +60,14 @@ const Admin = () => {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Yakin mau hapus?")) {
-      await deleteDoc(doc(db, "datapendaftaran", id));
-      fetchData();
-    }
+    await deleteDoc(doc(db, "datapendaftaran", id));
+    fetchData();
   };
 
+  // 🔥 LIHAT DETAIL (FULL DATA)
   const handleView = async (id) => {
     const snap = await getDoc(doc(db, "datapendaftaran", id));
-    const result = { id: snap.id, ...snap.data() };
-    setEditData(result);
+    setEditData({ id: snap.id, ...snap.data() });
     setIsEdit(false);
     setIsOpen(true);
   };
@@ -69,7 +75,6 @@ const Admin = () => {
   const handleUpdate = async () => {
     const { id, ...rest } = editData;
     await updateDoc(doc(db, "datapendaftaran", id), rest);
-    setIsEdit(false);
     setIsOpen(false);
     fetchData();
   };
@@ -78,28 +83,54 @@ const Admin = () => {
     await signOut(auth);
   };
 
-  const inputStyle = {
-    bg: "whiteAlpha.200",
-    color: "white",
-    _focus: { bg: "white", color: "black" }
+  // 🔥 EXPORT
+  const exportExcel = () => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    const filtered = data.filter((item) => {
+      if (!item.timestamp) return false;
+
+      const time = item.timestamp.toDate
+        ? item.timestamp.toDate()
+        : new Date(item.timestamp);
+
+      return time >= start && time <= end;
+    });
+
+    const csv = Papa.unparse(
+      filtered.map((item, i) => ({
+        No: i + 1,
+        Nama: item.nama,
+        Domisili: item.domisili,
+        TikTok: item.tiktok,
+        Usia: item.usia,
+        English: item.english,
+        Pengalaman: item.pengalaman,
+        Mengetik: item.mengetik,
+        WA: item.wa,
+        NoRegistrasi: item.noRegistrasi,
+        Tanggal: item.timestamp?.toDate?.() || ""
+      }))
+    );
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+
+    saveAs(blob, `EXPORT_${startDate}_SD_${endDate}.csv`);
+
+    setIsExportOpen(false);
+    setStartDate("");
+    setEndDate("");
   };
 
   return (
-    <Box
-      bgImage={`url(${bg})`}
-      bgSize="cover"
-      minH="100vh"
-      position="relative"
-    >
-      <Box
-        position="absolute"
-        w="100%"
-        h="100%"
-        bg="rgba(0,0,0,0.7)"
-        zIndex="1"
-      />
+    <Box bgImage={`url(${bg})`} bgSize="cover" minH="100vh" position="relative">
+
+      <Box position="absolute" w="100%" h="100%" bg="rgba(0,0,0,0.7)" />
 
       <Box position="relative" zIndex="2" p={6}>
+
+        {/* HEADER */}
         <Flex justify="space-between" mb={4}>
           <Text fontSize="2xl" color="white">
             Dashboard Admin 📊
@@ -110,14 +141,11 @@ const Admin = () => {
           </Button>
         </Flex>
 
-        <Box
-          bg="rgba(255,255,255,0.05)"
-          backdropFilter="blur(10px)"
-          p={4}
-          borderRadius="xl"
-          overflowX="auto"
-        >
-          <Table variant="simple" colorScheme="whiteAlpha" minW="900px">
+        {/* TABLE FULL DATA */}
+        <Box bg="rgba(255,255,255,0.05)" p={4} borderRadius="xl" overflowX="auto">
+
+          <Table variant="simple" colorScheme="whiteAlpha" minW="1000px">
+
             <Thead>
               <Tr>
                 <Th color="white">No</Th>
@@ -151,24 +179,35 @@ const Admin = () => {
                       Lihat
                     </Button>
 
-                    <Button
-                      size="sm"
-                      colorScheme="red"
-                      onClick={() => handleDelete(item.id)}
-                    >
+                    <Button size="sm" colorScheme="red" onClick={() => handleDelete(item.id)}>
                       Hapus
                     </Button>
                   </Td>
                 </Tr>
               ))}
             </Tbody>
+
           </Table>
+
         </Box>
+
+        {/* 🔥 EXPORT BUTTON POJOK KANAN BAWAH */}
+        <Box position="fixed" bottom="20px" right="20px">
+          <Button
+            colorScheme="green"
+            size="lg"
+            borderRadius="full"
+            onClick={() => setIsExportOpen(true)}
+          >
+            Export Excel
+          </Button>
+        </Box>
+
       </Box>
 
-      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)}>
+      {/* 🔥 MODAL DETAIL (LIHAT) */}
+      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} size="lg">
         <ModalOverlay />
-
         <ModalContent bg="gray.900" color="white">
           <ModalHeader>Detail Data</ModalHeader>
           <ModalCloseButton />
@@ -177,13 +216,10 @@ const Admin = () => {
             {Object.keys(editData).map((key) =>
               key !== "id" && key !== "timestamp" ? (
                 <Box key={key} mb={3}>
-                  <Text fontSize="sm" color="gray.400">
-                    {key}
-                  </Text>
+                  <Text fontSize="sm" color="gray.400">{key}</Text>
 
                   {isEdit ? (
                     <Input
-                      {...inputStyle}
                       value={editData[key] || ""}
                       onChange={(e) =>
                         setEditData({
@@ -191,6 +227,8 @@ const Admin = () => {
                           [key]: e.target.value
                         })
                       }
+                      bg="whiteAlpha.200"
+                      color="white"
                     />
                   ) : (
                     <Text>{editData[key]}</Text>
@@ -212,17 +250,53 @@ const Admin = () => {
               </>
             ) : (
               <>
-                <Button onClick={() => setIsEdit(true)}>
-                  Edit
-                </Button>
-                <Button ml={2} onClick={() => window.print()}>
-                  Print
-                </Button>
+                <Button onClick={() => setIsEdit(true)}>Edit</Button>
               </>
             )}
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* 🔥 MODAL EXPORT */}
+      <Modal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)}>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Pilih Tanggal Export</ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody>
+            <Text mb={2}>Tanggal Awal</Text>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              mb={3}
+            />
+
+            <Text mb={2}>Tanggal Akhir</Text>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </ModalBody>
+
+          <ModalFooter>
+            <Button
+              colorScheme="green"
+              onClick={exportExcel}
+              isDisabled={!startDate || !endDate}
+            >
+              Download
+            </Button>
+
+            <Button ml={2} onClick={() => setIsExportOpen(false)}>
+              Batal
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
     </Box>
   );
 };
