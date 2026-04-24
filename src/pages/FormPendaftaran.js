@@ -1,303 +1,248 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
-  Table,
-  Thead,
-  Tr,
-  Th,
-  Tbody,
-  Td,
-  Button,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Input,
-  Text,
-  Flex
+  Select,
+  Button,
+  VStack,
+  Alert,
+  Text
 } from "@chakra-ui/react";
 
-import { db, auth } from "../firebase";
+import { db } from "../firebase";
+import "../css/formpendaftaran.css";
+
 import {
+  addDoc,
   collection,
-  getDocs,
-  orderBy,
-  query,
-  doc,
-  getDoc,
-  deleteDoc,
-  updateDoc
+  serverTimestamp,
+  getDocs
 } from "firebase/firestore";
 
-import { signOut } from "firebase/auth";
 import bg from "../assets/bgdesk.jpg";
 
-import { saveAs } from "file-saver";
-import Papa from "papaparse";
+function App() {
+  const [form, setForm] = useState({
+    nama: "",
+    domisili: "",
+    tiktok: "",
+    usia: "",
+    english: "",
+    pengalaman: "",
+    mengetik: "",
+    wa: ""
+  });
 
-const Admin = () => {
-  const [data, setData] = useState([]);
-  const [editData, setEditData] = useState({});
-  const [isOpen, setIsOpen] = useState(false);
-  const [isEdit, setIsEdit] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState(false);
+  const [counter, setCounter] = useState(1);
 
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [showExport, setShowExport] = useState(false);
+  /* 🔥 AUTO HILANG ALERT */
+  useEffect(() => {
+    if (success || error) {
+      const timer = setTimeout(() => {
+        setSuccess(false);
+        setError(false);
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [success, error]);
 
   useEffect(() => {
-    fetchData();
+    const load = async () => {
+      const snap = await getDocs(collection(db, "datapendaftaran"));
+      setCounter(snap.size + 1);
+    };
+    load();
   }, []);
 
-  // 📌 FETCH DATA
-  const fetchData = async () => {
-    const q = query(collection(db, "datapendaftaran"), orderBy("timestamp", "desc"));
-    const snap = await getDocs(q);
-    setData(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  const handleChange = (e) => {
+    setError(false);
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // 📌 DELETE
-  const handleDelete = async (id) => {
-    if (window.confirm("Yakin mau hapus?")) {
-      await deleteDoc(doc(db, "datapendaftaran", id));
-      fetchData();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (Object.values(form).some((val) => val === "")) {
+      setError(true);
+      return;
     }
-  };
 
-  // 📌 VIEW DETAIL
-  const handleView = async (id) => {
-    const snap = await getDoc(doc(db, "datapendaftaran", id));
-    setEditData({ id: snap.id, ...snap.data() });
-    setIsOpen(true);
-  };
-
-  // 📌 UPDATE DATA
-  const handleUpdate = async () => {
-    const { id, ...rest } = editData;
-    await updateDoc(doc(db, "datapendaftaran", id), rest);
-    setIsEdit(false);
-    setIsOpen(false);
-    fetchData();
-  };
-
-  // 📌 LOGOUT
-  const handleLogout = async () => {
-    await signOut(auth);
-  };
-
-  // 🚀 EXPORT FIX FULL (ANTI DATA HILANG)
-  const exportExcel = () => {
-    let filtered = [...data];
-
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-
-      filtered = data.filter((item) => {
-        if (!item.timestamp) return false;
-
-        let time;
-        try {
-          time = item.timestamp.toDate();
-        } catch {
-          time = new Date(item.timestamp);
-        }
-
-        if (!time || isNaN(time.getTime())) return false;
-
-        return time >= start && time <= end;
+    try {
+      await addDoc(collection(db, "datapendaftaran"), {
+        ...form,
+        noRegistrasi: `R-${counter.toString().padStart(4, "0")}`,
+        timestamp: serverTimestamp()
       });
+
+      setSuccess(true);
+
+      setForm({
+        nama: "",
+        domisili: "",
+        tiktok: "",
+        usia: "",
+        english: "",
+        pengalaman: "",
+        mengetik: "",
+        wa: ""
+      });
+
+    } catch {
+      setError(true);
     }
-
-    const csv = Papa.unparse(
-      filtered.map((item, i) => ({
-        No: i + 1,
-        Nama: item.nama || "",
-        Domisili: item.domisili || "",
-        TikTok: item.tiktok || "",
-        Usia: item.usia || "",
-        English: item.english || "",
-        Pengalaman: item.pengalaman || "",
-        Mengetik: item.mengetik || "",
-        WA: item.wa || "",
-        NoRegistrasi: item.noRegistrasi || "",
-        Tanggal: item.timestamp?.toDate?.().toISOString() || ""
-      }))
-    );
-
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;"
-    });
-
-    saveAs(blob, "DATA_EXPORT.csv");
-    setShowExport(false);
   };
 
   const inputStyle = {
     bg: "whiteAlpha.200",
     color: "white",
-    _focus: { bg: "white", color: "black" }
+    border: "1px solid rgba(255,255,255,0.2)",
+    _focus: {
+      bg: "white",
+      color: "black"
+    }
   };
 
   return (
-    <Box bgImage={`url(${bg})`} bgSize="cover" minH="100vh" position="relative">
-
-      <Box position="absolute" w="100%" h="100%" bg="rgba(0,0,0,0.7)" />
-
-      <Box position="relative" zIndex="2" p={6}>
-
-        {/* HEADER */}
-        <Flex justify="space-between" mb={4}>
-          <Text fontSize="2xl" color="white">
-            Dashboard Admin 📊
+    <Box
+      className="form-wrapper"
+      bgImage={{ base: "none", md: `url(${bg})` }}
+      bgSize="cover"
+      bgPosition="center"
+      minH="100vh"
+    >
+      <Box
+        className="form-container"
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minH="100vh"
+        px={4}
+      >
+        <Box
+          w="100%"
+          maxW="360px"
+          p={6}
+          borderRadius="2xl"
+          bg="rgba(0,0,0,0.6)"
+          border="1px solid rgba(255,255,255,0.1)"
+        >
+          <Text fontSize="xl" color="white" mb={4} textAlign="center">
+            Form Pendaftaran Creator 🎥
           </Text>
 
-          <Button colorScheme="red" onClick={handleLogout}>
-            Logout
-          </Button>
-        </Flex>
+          <form onSubmit={handleSubmit}>
+            <VStack spacing={4}>
 
-        {/* TABLE FULL RESTORE */}
-        <Box bg="rgba(255,255,255,0.05)" p={4} borderRadius="xl" overflowX="auto">
+              <Input
+                name="nama"
+                placeholder="Nama Lengkap"
+                value={form.nama}
+                {...inputStyle}
+                onChange={handleChange}
+              />
 
-          <Table variant="simple" colorScheme="whiteAlpha" minW="1100px">
+              <Input
+                name="domisili"
+                placeholder="Domisili"
+                value={form.domisili}
+                {...inputStyle}
+                onChange={handleChange}
+              />
 
-            <Thead>
-              <Tr>
-                <Th color="white">No</Th>
-                <Th color="white">Nama</Th>
-                <Th color="white">Domisili</Th>
-                <Th color="white">TikTok</Th>
-                <Th color="white">Usia</Th>
-                <Th color="white">English</Th>
-                <Th color="white">Live</Th>
-                <Th color="white">Mengetik</Th>
-                <Th color="white">WA</Th>
-                <Th color="white">Aksi</Th>
-              </Tr>
-            </Thead>
+              <Input
+                name="tiktok"
+                placeholder="ID TikTok"
+                value={form.tiktok}
+                {...inputStyle}
+                onChange={handleChange}
+              />
 
-            <Tbody>
-              {data.map((item, i) => (
-                <Tr key={item.id}>
-                  <Td color="white">{i + 1}</Td>
-                  <Td color="white">{item.nama}</Td>
-                  <Td color="white">{item.domisili}</Td>
-                  <Td color="white">{item.tiktok}</Td>
-                  <Td color="white">{item.usia}</Td>
-                  <Td color="white">{item.english}</Td>
-                  <Td color="white">{item.pengalaman}</Td>
-                  <Td color="white">{item.mengetik}</Td>
-                  <Td color="white">{item.wa}</Td>
+              <Input
+                name="usia"
+                type="number"
+                placeholder="Usia"
+                value={form.usia}
+                {...inputStyle}
+                onChange={handleChange}
+              />
 
-                  <Td>
-                    <Button size="sm" mr={2} onClick={() => handleView(item.id)}>
-                      Lihat
-                    </Button>
+              <Select
+                name="english"
+                value={form.english}
+                {...inputStyle}
+                onChange={handleChange}
+              >
+                <option value="">Bahasa Inggris Basic</option>
+                <option value="Ya">Ya</option>
+                <option value="Tidak">Tidak</option>
+              </Select>
 
-                    <Button size="sm" colorScheme="red" onClick={() => handleDelete(item.id)}>
-                      Hapus
-                    </Button>
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
+              <Select
+                name="pengalaman"
+                value={form.pengalaman}
+                {...inputStyle}
+                onChange={handleChange}
+              >
+                <option value="">Pengalaman Live</option>
+                <option value="Ya">Ya</option>
+                <option value="Tidak">Tidak</option>
+              </Select>
 
-          </Table>
+              <Select
+                name="mengetik"
+                value={form.mengetik}
+                {...inputStyle}
+                onChange={handleChange}
+              >
+                <option value="">Kemampuan Mengetik</option>
+                <option value="Lancar">Lancar</option>
+                <option value="Tidak">Tidak</option>
+              </Select>
+
+              <Input
+                name="wa"
+                placeholder="No WhatsApp"
+                value={form.wa}
+                {...inputStyle}
+                onChange={handleChange}
+              />
+
+              {/* 🔥 BUTTON KECIL */}
+              <Button
+                type="submit"
+                colorScheme="blue"
+                w="40%"
+                mx="auto"
+                display="block"
+                borderRadius="full"
+                _hover={{ transform: "scale(1.05)" }}
+              >
+                Daftar
+              </Button>
+
+            </VStack>
+          </form>
+
+          {/* 🔥 ALERT AUTO HILANG */}
+          {success && (
+            <Alert status="success" mt={4} borderRadius="lg">
+              Berhasil daftar!
+            </Alert>
+          )}
+
+          {error && (
+            <Alert status="error" mt={4} borderRadius="lg">
+              Semua field wajib diisi!
+            </Alert>
+          )}
 
         </Box>
-
-        {/* EXPORT BUTTON */}
-        <Box position="fixed" bottom="20px" right="20px">
-          <Button
-            colorScheme="green"
-            size="lg"
-            borderRadius="full"
-            onClick={() => setShowExport(true)}
-          >
-            Download Excel
-          </Button>
-        </Box>
-
       </Box>
-
-      {/* MODAL DETAIL */}
-      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)}>
-        <ModalOverlay />
-        <ModalContent bg="gray.900" color="white">
-          <ModalHeader>Detail Data</ModalHeader>
-          <ModalCloseButton />
-
-          <ModalBody>
-            {Object.keys(editData).map((key) =>
-              key !== "id" && key !== "timestamp" ? (
-                <Box key={key} mb={3}>
-                  <Text fontSize="sm" color="gray.400">{key}</Text>
-
-                  {isEdit ? (
-                    <Input
-                      {...inputStyle}
-                      value={editData[key] || ""}
-                      onChange={(e) =>
-                        setEditData({ ...editData, [key]: e.target.value })
-                      }
-                    />
-                  ) : (
-                    <Text>{editData[key]}</Text>
-                  )}
-                </Box>
-              ) : null
-            )}
-          </ModalBody>
-
-          <ModalFooter>
-            {isEdit ? (
-              <>
-                <Button colorScheme="green" onClick={handleUpdate}>
-                  Simpan
-                </Button>
-                <Button ml={2} onClick={() => setIsEdit(false)}>
-                  Batal
-                </Button>
-              </>
-            ) : (
-              <Button onClick={() => setIsEdit(true)}>Edit</Button>
-            )}
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      {/* MODAL EXPORT */}
-      <Modal isOpen={showExport} onClose={() => setShowExport(false)}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Pilih Tanggal Export</ModalHeader>
-          <ModalCloseButton />
-
-          <ModalBody>
-            <Text mb={2}>Tanggal Awal</Text>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-
-            <Text mt={3} mb={2}>Tanggal Akhir</Text>
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </ModalBody>
-
-          <ModalFooter>
-            <Button colorScheme="green" onClick={exportExcel}>
-              Download
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
     </Box>
   );
-};
+}
 
-export default Admin;
+export default App;
